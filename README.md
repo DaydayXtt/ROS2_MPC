@@ -7,7 +7,7 @@
     ```
     mkdir -p path-to-ws
     cd path-to-ws
-    git clone ...
+    git clone git@github.com:DaydayXtt/ROS2_MPC.git
     colcon build
     source install/setup.bash
     
