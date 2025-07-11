@@ -5,10 +5,9 @@
 
 ## DEMO
     ```
-    mkdir -p path-to-ws/src
-    cd path-to-ws/src
+    mkdir -p path-to-ws
+    cd path-to-ws
     git clone ...
-    cd..
     colcon build
     source install/setup.bash
     
