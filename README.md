@@ -1,13 +1,14 @@
 # ROS2_MPC
-基于ROS2Humble的MPC轨迹跟踪控制Demo
+基于ROS2Humble的多智能体MPC轨迹跟踪控制Demo
 - MPC算法使用Osqp-Eigen库实现
 - 模型采用二阶积分器，Python实现
 
+![示例图片](./results/pic2.png)
+
 ## DEMO
     ```
-    mkdir -p path-to-ws
-    cd path-to-ws
     git clone git@github.com:DaydayXtt/ROS2_MPC.git
+    cd ROS2_MPC/
     colcon build
     source install/setup.bash
     
@@ -15,7 +16,6 @@
     ---
     ros2 launch mpc visualize.launch.py
     ```
-
 ## 0. 环境准备
 - CMake-v3.22.1、Eigen-v3.4.0、osqp-v1.0.0、osqp-eigen-v0.10.0
 - Python3 3.10.12
