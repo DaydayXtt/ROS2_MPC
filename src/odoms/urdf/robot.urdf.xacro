@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<robot name="integrator" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- 定义带命名空间的参数 -->
+  <xacro:arg name="robot_namespace" default="" />
+  
+  <!-- 使用参数 -->
+  <xacro:property name="ns" value="$(arg robot_namespace)" />
+  
+  <!-- 定义 odom 链接（虚拟坐标系） -->
+  <link name="${ns}_odom"/>
+
+  <!-- 定义 base_link -->
+  <link name="${ns}_base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://odoms/meshes/ardrone.dae" scale="0.5 0.5 0.5"/>
+        <!-- <mesh filename="package://odom_differential/meshes/747-400/747-400.dae" scale="0.1 0.1 0.1"/> -->
+        <!-- <mesh filename="package://odom_differential/meshes/glider/glider.dae" scale="0.1 0.1 0.1"/> -->
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.5 0.5 0.3"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- 定义 odom 到 base_link 的固定关节（可选） -->
+  <joint name="${ns}_odom_joint" type="fixed">
+    <parent link="${ns}_odom"/>
+    <child link="${ns}_base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+</robot>

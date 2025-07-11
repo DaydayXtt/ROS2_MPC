@@ -1,0 +1,49 @@
+robot: # robot
+    robot0:
+        id: 0 # 车辆ID
+        frame: "robot0_odom"
+        pose_x: 1.0
+        pose_y: 0.0
+        radius: 0.2
+    robot1:
+        id: 1
+        frame: "robot1_odom"
+        pose_x: 2.0
+        pose_y: 0.0
+        radius: 0.2
+    robot2:
+        id: 2
+        frame: "robot2_odom"
+        pose_x: 3.0
+        pose_y: 0.0
+        radius: 0.2
+    robot3:
+        id: 3
+        frame: "robot3_odom"
+        pose_x: 4.0
+        pose_y: 0.0
+        radius: 0.2
+
+Trajectory: # 轨迹
+    type: "circle" # circle、helix、line
+    publish_rate: 10 # 发布频率(Hz)
+    length: 2054
+    
+    circle_radius: 2.0 # 圆形轨迹半径
+    circle_center_x: -0.2 # 圆形轨迹圆心x坐标
+    circle_center_y: 0.5 # 圆形轨迹圆心y坐标
+    circle_z: 0.2 # 圆形轨迹高度
+    circle_speed: 0.005 # 圆形轨迹频率
+    
+    helix_radius: 3.0 # 螺旋线轨迹半径
+    helix_center_x: 0.0 # 螺旋线轨迹圆心x坐标
+    helix_center_y: 0.0 # 螺旋线轨迹圆心y坐标
+    helix_speed: 0.003 # 螺旋线轨迹速度
+
+    line_start_x: 1.0 # 直线起点x坐标
+    line_start_y: -0.5 # 直线起点y坐标
+    line_start_z: 0.1 # 直线起点y坐标
+    line_speed: 0.005
+MPC: # 控制器
+    horizon: 20 # 滑动窗口长度
+    dt: 0.05 # 时间步长

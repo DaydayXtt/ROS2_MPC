@@ -1,0 +1,7 @@
+build/
+install/
+log/
+skins/
+frames_*
+src/odoms/meshes/747-400/
+src/odoms/meshes/glider/
