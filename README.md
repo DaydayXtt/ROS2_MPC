@@ -53,4 +53,8 @@
 ...
 
 ## TroubleShooting:
-1. 时而运行时节点崩溃
+1. 运行时节点时而崩溃
+   - 多试几次，代码待检查
+2. ```git pull --rebase origin main```
+   - 将远程分支 (origin/main) 的最新更改同步到本地分支，同时 重新应用（rebase） 你本地的提交
+   - 将你的本地提交“移动”到 origin/main 的最新提交之后，使历史保持线性
