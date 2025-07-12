@@ -32,6 +32,7 @@ def generate_launch_description():
     
     # 创建三个robot的命名空间
     robot_namespaces = ["robot0", "robot1", "robot2"]
+    # robot_namespaces = ["robot0"]
     for robot_namespace in robot_namespaces:
         # urdf前缀
         robot_description = ParameterValue(
@@ -57,10 +58,9 @@ def generate_launch_description():
             output='screen'
         )
         odom_int_action = TimerAction(
-            period=0.01,
-            actions=[odom_int]
+            period=0.0,
+            actions=[odom_state_publisher, odom_int]
         )
-        ld.add_action(odom_state_publisher)
         ld.add_action(odom_int_action)
         
         # 2. 规划节点 - ros2 run mpc main
@@ -70,6 +70,7 @@ def generate_launch_description():
             name='mpc_node',
             namespace=robot_namespace,
             output='screen',
+            # arguments=['--ros-args', '--log-level', 'debug']
         )
         planner_action = TimerAction(
             period=1.0,

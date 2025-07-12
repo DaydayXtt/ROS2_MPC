@@ -7,8 +7,10 @@ namespace OsqpMPC
     {
     }
 
-    void MPCController::init(int horizon, const Odometry &odom, const Path &desire_traj, double dt_)
+    void MPCController::init(int horizon, const Odometry &odom, const Path &desire_traj, double dt_, bool &flag_init_completed)
     {
+        if (flag_init_completed)
+            return;
         update_x0(odom);             // 初始状态
         x_ref << 0.5, 5.0, 0.0, 0.0; // 参考状态
         desire_traj_ = desire_traj;
@@ -19,7 +21,8 @@ namespace OsqpMPC
         dt = dt_;
 
         setupQP();
-        // solveQP_demo();
+        flag_init_completed = true;
+        std::cout << "MPCController init completed." << std::endl;
     }
 
     void MPCController::setupQP()
@@ -35,13 +38,13 @@ namespace OsqpMPC
         castMPCToQPHessian();
 
         castMPCToQPGradient(x_ref); // 假设x_ref为0
-        // castMPCToQPGradient(x_ref); // 假设x_ref为0
         castMPCToQPConstraintMatrix();
         castMPCToQPConstraintVectors(x0);
 
         // 初始化OSQP求解器
         solver.settings()->setVerbosity(false);
         solver.settings()->setWarmStart(true);
+        // solver.settings()->setPolish(true);
 
         solver.data()->setNumberOfVariables(n * (N + 1) + m * N);
         solver.data()->setNumberOfConstraints(2 * n * (N + 1) + m * N);
@@ -56,9 +59,11 @@ namespace OsqpMPC
             return;
 
         if (!solver.initSolver())
+        {
+            std::cerr << "OSQP solver init failed!" << std::endl;
             return;
+        }
     }
-
     void MPCController::update_info(const Odometry &odom, int ct)
     {
         update_x0(odom);        // 初始状态
@@ -159,6 +164,19 @@ namespace OsqpMPC
 
     bool MPCController::solveQP(int ct)
     {
+        // 更新
+        if (!solver.updateLinearConstraintsMatrix(constraintMatrix))
+        {
+            std::cerr << "更新约束失败!" << std::endl;
+            return false;
+        }
+        // 更新
+        if (!solver.updateHessianMatrix(hessianMatrix))
+        {
+            std::cerr << "更新Hessian失败!" << std::endl;
+            return false;
+        }
+
         // 更新约束
         if (!solver.updateBounds(lowerBound, upperBound))
         {
@@ -173,73 +191,31 @@ namespace OsqpMPC
         }
         if (solver.solveProblem() != OsqpEigen::ErrorExitFlag::NoError)
         {
-            std::cerr << "QP求解失败!" << std::endl;
+            std::cerr << "OSQP求解失败!" << std::endl;
+            return false;
+        }
+        auto status = solver.getStatus();
+        // std::cerr << static_cast<int>(status) << std::endl;
+        if (status != OsqpEigen::Status::Solved)
+        {
+            std::cerr << "求解状态异常: " << static_cast<int>(status) << std::endl;
             return false;
         }
 
         // 获取控制输入
         // std::cout << "第" << ct + 1 << "步控制" << std::endl;
-        VectorXd QPSolution;
-        QPSolution = solver.getSolution();
-        ctr = QPSolution.segment(n * (N + 1), m);
-
-        // 更新状态
-        // x0 = A_system * x0 + B_system * ctr;
-
-        // 打印结果
-        // std::cout << "Step " << ct << ": State = [" << x0.transpose()
-        //           << "], Control = [" << ctr.transpose() << "]" << std::endl;
-
-        // 检查是否收敛
-        // if (getErrorNorm(x0, x_ref) < 0.01)
-        //     std::cout << "到达目标状态!" << std::endl;
-
-        return true;
-    }
-
-    bool MPCController::solveQP_demo()
-    {
-        // 控制循环
-        int numberOfSteps = 200;
-        Vector2d ctr;
-        VectorXd QPSolution;
-        for (int i = 0; i < numberOfSteps; i++)
+        const Eigen::VectorXd &QPSolution = solver.getSolution();
+        if (QPSolution.size() == 0 || !QPSolution.allFinite())
         {
-            if (solver.solveProblem() != OsqpEigen::ErrorExitFlag::NoError)
-            {
-                std::cerr << "QP求解失败!" << std::endl;
-                return false;
-            }
-
-            // 获取控制输入
-            std::cout << "第" << i + 1 << "步控制" << std::endl;
-            QPSolution = solver.getSolution();
-            ctr = QPSolution.segment(n * (N + 1), m);
-
-            // 更新状态
-            x0 = A_system * x0 + B_system * ctr;
-
-            // 打印结果
-            std::cout << "Step " << i << ": State = [" << x0.transpose()
-                      << "], Control = [" << ctr.transpose() << "]" << std::endl;
-
-            // 检查是否收敛
-            if (getErrorNorm(x0, x_ref) < 0.01)
-            {
-                std::cout << "到达目标状态!" << std::endl;
-                break;
-            }
-
-            // 更新约束
-            updateConstraintVectors(x0);
-            if (!solver.updateBounds(lowerBound, upperBound))
-            {
-                std::cerr << "更新约束失败!" << std::endl;
-                return false;
-            }
+            std::cerr << "OSQP 解非法!" << std::endl;
+            return false;
         }
+        // std::cerr << "HERE in [solveQP]." << std::endl;
+        ctr = QPSolution.segment(n * (N + 1), m);
+        // std::cout << "u: " << ctr(0) << " " << ctr(1) << std::endl;
         return true;
     }
+
     void MPCController::setDynamicsMatrices()
     {
         // 状态矩阵

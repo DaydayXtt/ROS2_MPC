@@ -22,7 +22,7 @@ namespace OsqpMPC
     {
     public:
         MPCController();
-        void init(int horizon, const Odometry &odom, const Path &desire_traj, double dt);
+        void init(int horizon, const Odometry &odom, const Path &desire_traj, double dt, bool &flag_init_completed);
         Vector2d ctr;
         void setupQP();
         bool solveQP_demo();
@@ -32,13 +32,15 @@ namespace OsqpMPC
         void update_desire_traj(int ct);                // 更新期望轨迹(N个时刻)
         std::vector<PoseStamped> desire_traj_inter_;    // 每个回合的期望轨迹区间
         void update_gradient();
-
+        
+        inline Vector4d get_x0() { return x0; }
     private:
         int n; // 状态维度
         int m; // 控制维度
         int N; // 预测时域
 
         Vector4d x_ref, x0;
+
         Path desire_traj_; // 总期望轨迹
 
         // 系统矩阵

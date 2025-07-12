@@ -94,7 +94,8 @@
         "svd": "cpp",
         "*.expression": "cpp",
         "sparse": "cpp",
-        "*.tpp": "cpp"
+        "*.tpp": "cpp",
+        "nonlinearoptimization": "cpp"
     },
     "python.defaultInterpreterPath": "/usr/bin/python3",
     "python.linting.pylintEnabled": true,

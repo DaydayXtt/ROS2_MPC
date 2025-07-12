@@ -9,18 +9,12 @@ namespace OsqpMPC
         ns = this->get_namespace();
         std::string robot_name = ns.substr(1, ns.length() - 1);
         RCLCPP_INFO(this->get_logger(), "I am %s", robot_name.c_str());
-        
+
         params_config_ = std::make_unique<ConfigReader>();
-
-        // char last_char = ns.back();
-        // std::string robot_id_str(1, last_char);
-        // if (std::stoi(robot_id_str) == 0)
-        //     std::cout << "I am the first robot." << std::endl;
-
         // 生成期望轨迹
         params_config_->read_trajectory_config(); // 初始化参数
         desire_trajectory_ = generate_trajectory();
-        RCLCPP_INFO(this->get_logger(), "Size of desire_trajectory: %ld", desire_trajectory_.poses.size());
+        // RCLCPP_INFO(this->get_logger(), "Size of desire_trajectory: %ld", desire_trajectory_.poses.size());
         desire_trajectory_puber_ = create_publisher<Path>("desire_trajectory", 10);
         desire_trajectory_current_puber_ = create_publisher<Path>("desire_trajectory_current", 10);
         // 创建定时器
@@ -30,6 +24,7 @@ namespace OsqpMPC
             std::bind(&MPC_Node::desire_trajectory_callback, this));
 
         // odom
+        flag_init_completed_ = false;
         odom_suber_ = this->create_subscription<Odometry>(
             "odom", 1,
             std::bind(&MPC_Node::odom_callback, this, _1));
@@ -41,7 +36,6 @@ namespace OsqpMPC
         dt_ = params_config_->mpc().dt_;
         ct_ = 0;
 
-        mpc_controller_.init(N, quad_odom_, desire_trajectory_, dt_);
         motion_planning_timer_ = this->create_wall_timer(
             std::chrono::milliseconds(static_cast<int>(dt_ * 1000.0)),
             std::bind(&MPC_Node::motion_planning_callback, this));
@@ -97,9 +91,12 @@ namespace OsqpMPC
     void MPC_Node::motion_planning_callback()
     {
         // 防止未收到odom数据
-        if (quad_odom_.header.frame_id != ns + "_odom")
+        if (quad_odom_.header.frame_id.empty() || quad_odom_.child_frame_id.empty())
+        {
+            RCLCPP_WARN(this->get_logger(), "Odometry not received yet.");
             return;
-
+        }
+        mpc_controller_.init(N, quad_odom_, desire_trajectory_, dt_, flag_init_completed_);
         // 计时
         auto tic = std::chrono::high_resolution_clock::now();
         timestamp_ = this->now().nanoseconds();
@@ -137,7 +134,8 @@ namespace OsqpMPC
 
         auto toc = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(toc - tic).count();
-        std::cout << "motion_planning_callback() duration: " << duration << " microseconds" << std::endl;
+        // std::cout << "Calculate time: " << duration << " microseconds" << std::endl;
+        RCLCPP_INFO(this->get_logger(), "Calculate time: %ld microseconds", duration);
     }
 
     void MPC_Node::odom_callback(const Odometry::SharedPtr msg)

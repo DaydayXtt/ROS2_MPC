@@ -40,6 +40,7 @@ namespace OsqpMPC
 
         // 二阶积分器odom
         Odometry quad_odom_;
+        bool flag_init_completed_;
         rclcpp::Subscription<Odometry>::SharedPtr odom_suber_;
         void odom_callback(const Odometry::SharedPtr msg);
 

@@ -26,6 +26,7 @@ def generate_launch_description():
     
     # 创建三个robot的命名空间
     robot_namespaces = ["robot0", "robot1", "robot2"]
+    # robot_namespaces = ["robot0"]
     for robot_namespace in robot_namespaces:
         vis_node = Node(
                 package='mpc',
