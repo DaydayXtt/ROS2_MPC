@@ -55,6 +55,8 @@
 ## TroubleShooting:
 1. 运行时节点时而崩溃——在于[mpc_controller.cpp中solver.getSolution();](https://github.com/DaydayXtt/ROS2_MPC/blob/main/src/mpc/src/utils/mpc_controller.cpp#L207)
    - 加入系列安全测试
+   <!-- - 原因可能在于使用引用```const Eigen::VectorXd &QPSolution = solver.getSolution();```，从而避免一些内存拷贝上的不稳定问题。 -->
+   
 2. ```git pull --rebase origin main```
    - 将远程分支 (origin/main) 的最新更改同步到本地分支，同时 重新应用（rebase） 你本地的提交
    - 将你的本地提交“移动”到 origin/main 的最新提交之后，使历史保持线性

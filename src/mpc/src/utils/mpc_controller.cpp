@@ -216,7 +216,7 @@ namespace OsqpMPC
         return true;
     }
 
-    void MPCController::setDynamicsMatrices()
+    void MPCController::setDynamicsMatrices()   
     {
         // 状态矩阵
         A_system << 1.0, 0.0, dt, 0.0,
@@ -331,6 +331,8 @@ namespace OsqpMPC
                     if (value != 0)
                         constraintMatrix.insert(n * (i + 1) + j, m * i + k + n * (N + 1)) = value;
                 }
+        
+        // 状态和输入边界
         for (int i = 0; i < n * (N + 1) + m * N; i++)
             constraintMatrix.insert(i + (N + 1) * n, i) = 1;
         constraintMatrix.makeCompressed();
