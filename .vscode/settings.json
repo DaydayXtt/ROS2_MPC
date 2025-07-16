@@ -96,7 +96,15 @@
         "sparse": "cpp",
         "*.tpp": "cpp",
         "nonlinearoptimization": "cpp",
+<<<<<<< HEAD
         "*.tcc": "cpp"
+=======
+        "csignal": "cpp",
+        "strstream": "cpp",
+        "codecvt": "cpp",
+        "shared_mutex": "cpp",
+        "cfenv": "cpp"
+>>>>>>> d9b7e76 (trivial)
     },
     "python.defaultInterpreterPath": "/usr/bin/python3",
     "python.linting.pylintEnabled": true,
