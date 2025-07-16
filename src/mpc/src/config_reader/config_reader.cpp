@@ -67,6 +67,7 @@ namespace OsqpMPC
         {
             mpc_.horizon_ = params["MPC"]["horizon"].as<int>();
             mpc_.dt_ = params["MPC"]["dt"].as<double>();
+            mpc_.gamma_ = params["MPC"]["gamma"].as<double>();
         }
         catch (const YAML::Exception &e)
         {

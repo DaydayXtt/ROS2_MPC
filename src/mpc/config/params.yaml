@@ -45,5 +45,6 @@ Trajectory: # 轨迹
     line_start_z: 0.1 # 直线起点y坐标
     line_speed: 0.005
 MPC: # 控制器
-    horizon: 20 # 滑动窗口长度
+    horizon: 50 # 滑动窗口长度
     dt: 0.05 # 时间步长
+    gamma: 0.8 # CBF约束系数

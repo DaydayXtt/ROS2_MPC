@@ -36,6 +36,8 @@ namespace OsqpMPC
         dt_ = params_config_->mpc().dt_;
         ct_ = 0;
 
+        gamma_ = params_config_->mpc().gamma_;
+
         motion_planning_timer_ = this->create_wall_timer(
             std::chrono::milliseconds(static_cast<int>(dt_ * 1000.0)),
             std::bind(&MPC_Node::motion_planning_callback, this));
@@ -97,6 +99,7 @@ namespace OsqpMPC
             return;
         }
         mpc_controller_.init(N, quad_odom_, desire_trajectory_, dt_, flag_init_completed_);
+        // RCLCPP_INFO(this->get_logger(), "HERE!");
         // 计时
         auto tic = std::chrono::high_resolution_clock::now();
         timestamp_ = this->now().nanoseconds();
@@ -105,6 +108,8 @@ namespace OsqpMPC
         timestamp_last_ = timestamp_;
 
         // 更新MPC的信息
+        RCLCPP_INFO(this->get_logger(), "Current Pose: %f, %f",
+                    mpc_controller_.get_x0()(0), mpc_controller_.get_x0()(1));
         mpc_controller_.update_info(quad_odom_, ct_);
 
         // ROS2话题消息更新

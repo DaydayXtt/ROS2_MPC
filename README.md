@@ -30,6 +30,15 @@
     ros2 launch mpc visualize.launch.py
     ```
 - 参考：https://robotology.github.io/osqp-eigen/md_pages_mpc.html
+
+- 调试：
+    ```
+    ros2 run odoms odom_integrator --ros-args --remap __ns:=/robot0
+    ros2 run mpc main_node --ros-args --remap __ns:=/robot0
+    ```
+- 没有“提前”的丝滑感觉，哪怕gamma取小
+    - 取0有明显变化
+    - 需要理解一下CBF约束的含义
 ### TODO:
 1. x、y、z三维
 2. 尝试CBF

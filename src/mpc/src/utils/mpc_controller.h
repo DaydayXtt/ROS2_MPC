@@ -32,12 +32,17 @@ namespace OsqpMPC
         void update_desire_traj(int ct);                // 更新期望轨迹(N个时刻)
         std::vector<PoseStamped> desire_traj_inter_;    // 每个回合的期望轨迹区间
         void update_gradient();
+        void update_CBF_constraints();
         
         inline Vector4d get_x0() { return x0; }
     private:
         int n; // 状态维度
         int m; // 控制维度
         int N; // 预测时域
+
+        double gamma; // CBF约束系数
+        VectorXd x_obs; // 障碍物的位置（单个）
+        double r_obs;   // 障碍物的半径（单个）
 
         Vector4d x_ref, x0;
 

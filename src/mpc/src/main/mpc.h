@@ -60,6 +60,7 @@ namespace OsqpMPC
         // 控制器
         double timestamp_, timestamp_last_, dt_; // 时间戳
         int N, ct_;                              // 控制时间步数
+        double gamma_;                           // CBF约束系数
         MPCController mpc_controller_;
         rclcpp::TimerBase::SharedPtr motion_planning_timer_;
         void motion_planning_callback();

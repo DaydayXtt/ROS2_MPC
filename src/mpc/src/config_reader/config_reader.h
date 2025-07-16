@@ -22,6 +22,7 @@ namespace OsqpMPC
     {
         int horizon_ = 0; // 滑动窗口长度
         double dt_ = 0.0; // 时间步长
+        double gamma_ = 0.0; // CBF约束系数
     };
 
     struct TrajectoryStruct // 期望轨迹

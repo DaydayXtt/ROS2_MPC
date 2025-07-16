@@ -29,8 +29,12 @@ namespace OsqpMPC
         m = 2;
         N = horizon;
 
-        dt = dt_;
+        gamma = 0.5;               // CBF约束系数
+        x_obs = VectorXd::Zero(2); // 障碍物的位置（单个）
+        x_obs << 0.0, 2.5;         // 障碍物的位置（单个）
+        r_obs = 0.5;
 
+        dt = dt_;
         setupQP();
         flag_init_completed = true;
         std::cout << "MPCController init completed." << std::endl;
@@ -49,6 +53,7 @@ namespace OsqpMPC
         castMPCToQPHessian();
 
         castMPCToQPGradient(x_ref); // 假设x_ref为0
+
         castMPCToQPConstraintMatrix();
         castMPCToQPConstraintVectors(x0);
 
@@ -58,7 +63,7 @@ namespace OsqpMPC
         // solver.settings()->setPolish(true);
 
         solver.data()->setNumberOfVariables(n * (N + 1) + m * N);
-        solver.data()->setNumberOfConstraints(2 * n * (N + 1) + m * N);
+        solver.data()->setNumberOfConstraints(2 * n * (N + 1) + m * N + N);
 
         if (!solver.data()->setHessianMatrix(hessianMatrix))
             return;
@@ -79,6 +84,9 @@ namespace OsqpMPC
     {
         update_x0(odom);        // 初始状态
         update_desire_traj(ct); // 期望轨迹
+
+        // update_CBF_constraints(); // CBF约束
+        castMPCToQPConstraintMatrix();
     }
 
     void MPCController::update_x0(const Odometry &odom)
@@ -173,6 +181,34 @@ namespace OsqpMPC
         // }
     }
 
+    void MPCController::update_CBF_constraints()
+    {
+        // CBF
+        int cbfRowStart = 2 * n * (N + 1) + m * N;
+        VectorXd x0_backup(n);
+        x0_backup << 1, 0, 0, 0;
+        for (int i = 0; i < N; ++i)
+        {
+            VectorXd grad = 2 * (x0_backup.segment(0, 2) - x_obs);
+            VectorXd nabla_h(n);
+            nabla_h << grad, 0, 0;
+            std::cout << "nabla_h: " << nabla_h.transpose() << std::endl;
+            // 状态部分列偏移
+            VectorXd gradA_I = nabla_h.transpose() * (A_system - MatrixXd::Identity(n, n)); // size n
+            std::cout << "gradA_I: " << gradA_I.transpose() << std::endl;
+            int x_col0 = n * i;
+            for (int k = 0; k < n; ++k)
+                constraintMatrix.insert(cbfRowStart + i, x_col0 + k) = gradA_I(k);
+            // 控制部分列偏移
+            VectorXd gradB = nabla_h.transpose() * B_system; // size m
+            std::cout << "gradB: " << gradB.transpose() << std::endl;
+            int u_col0 = n * (N + 1) + m * i;
+            for (int k = 0; k < m; ++k)
+                constraintMatrix.insert(cbfRowStart + i, u_col0 + k) = gradB(k);
+        }
+        constraintMatrix.makeCompressed();
+    }
+
     bool MPCController::solveQP(int ct)
     {
         // 更新
@@ -227,7 +263,7 @@ namespace OsqpMPC
         return true;
     }
 
-    void MPCController::setDynamicsMatrices()   
+    void MPCController::setDynamicsMatrices()
     {
         // 状态矩阵
         A_system << 1.0, 0.0, dt, 0.0,
@@ -318,7 +354,10 @@ namespace OsqpMPC
     }
     void MPCController::castMPCToQPConstraintMatrix()
     {
-        constraintMatrix.resize(n * (N + 1) + n * (N + 1) + m * N,
+        // constraintMatrix.resize(n * (N + 1) + n * (N + 1) + m * N,
+        //                         n * (N + 1) + m * N);
+        // 加上CBF约束
+        constraintMatrix.resize(n * (N + 1) + n * (N + 1) + m * N + N,
                                 n * (N + 1) + m * N);
 
         // 初始状态约束
@@ -342,10 +381,32 @@ namespace OsqpMPC
                     if (value != 0)
                         constraintMatrix.insert(n * (i + 1) + j, m * i + k + n * (N + 1)) = value;
                 }
-        
+
         // 状态和输入边界
         for (int i = 0; i < n * (N + 1) + m * N; i++)
             constraintMatrix.insert(i + (N + 1) * n, i) = 1;
+
+        // CBF
+        // std::cout << "Init: x0 = " << x0.segment(0, 2).transpose() << std::endl;
+        int cbfRowStart = 2 * n * (N + 1) + m * N;
+        for (int i = 0; i < N; ++i)
+        {
+            VectorXd grad = 2 * (x0.segment(0, 2) - x_obs);
+            VectorXd nabla_h(n);
+            nabla_h << grad, 0, 0;
+            // 状态部分列偏移
+            VectorXd gradA_I = nabla_h.transpose() * (A_system - MatrixXd::Identity(n, n)); // size n
+            int x_col0 = n * i;
+            for (int k = 0; k < n; ++k)
+                constraintMatrix.insert(cbfRowStart + i, x_col0 + k) = gradA_I(k);
+
+            // 控制部分列偏移
+            VectorXd gradB = nabla_h.transpose() * B_system; // size m
+            int u_col0 = n * (N + 1) + m * i;
+            for (int k = 0; k < m; ++k)
+                constraintMatrix.insert(cbfRowStart + i, u_col0 + k) = gradB(k);
+        }
+
         constraintMatrix.makeCompressed();
     }
     void MPCController::castMPCToQPConstraintVectors(const Matrix<double, 4, 1> &x0)
@@ -374,16 +435,37 @@ namespace OsqpMPC
         lowerEquality.segment(0, n) = -x0;
         upperEquality.segment(0, n) = -x0;
 
+        // CBF约束
+        VectorXd lowerCBF = VectorXd::Zero(N);
+        VectorXd upperCBF = VectorXd::Zero(N);
+        for (int i = 0; i < N; ++i)
+        {
+            double h_xk = pow(x0(0) - x_obs(0), 2) + pow(x0(1) - x_obs(1), 2) - pow(r_obs, 2);
+            lowerCBF(i) = -gamma * h_xk;
+            upperCBF(i) = OsqpEigen::INFTY;
+        }
+
         // 合并约束
-        lowerBound.resize(2 * n * (N + 1) + m * N);
-        upperBound.resize(2 * n * (N + 1) + m * N);
-        lowerBound << lowerEquality, lowerInequality;
-        upperBound << upperEquality, upperInequality;
+        lowerBound.resize(2 * n * (N + 1) + m * N + N);
+        upperBound.resize(2 * n * (N + 1) + m * N + N);
+        lowerBound << lowerEquality, lowerInequality, lowerCBF;
+        upperBound << upperEquality, upperInequality, upperCBF;
     }
     void MPCController::updateConstraintVectors(const Matrix<double, 4, 1> &x0)
     {
         lowerBound.segment(0, n) = -x0;
         upperBound.segment(0, n) = -x0;
+
+        // std::cout << gamma << std::endl;
+        // std::cout << "obs: " << x_obs.transpose() << std::endl;
+        int cbfRowStart = 2 * n * (N + 1) + m * N;
+        for (int i = 0; i < N; ++i)
+        {
+            double h_xk = pow(x0(0) - x_obs(0), 2) + pow(x0(1) - x_obs(1), 2) - pow(r_obs, 2);
+            // std::cout << "h_xk = " << h_xk << std::endl;
+            lowerBound(cbfRowStart + i) = -gamma * h_xk;
+            upperBound(cbfRowStart + i) = OsqpEigen::INFTY;
+        }
     }
 
     double MPCController::getErrorNorm(const Matrix<double, 4, 1> &x,

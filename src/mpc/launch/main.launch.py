@@ -31,8 +31,8 @@ def generate_launch_description():
     from launch.substitutions import Command
     
     # 创建三个robot的命名空间
-    robot_namespaces = ["robot0", "robot1", "robot2"]
-    # robot_namespaces = ["robot0"]
+    # robot_namespaces = ["robot0", "robot1", "robot2"]
+    robot_namespaces = ["robot0"]
     for robot_namespace in robot_namespaces:
         # urdf前缀
         robot_description = ParameterValue(
