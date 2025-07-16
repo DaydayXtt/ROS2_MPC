@@ -29,13 +29,20 @@ namespace OsqpMPC
         m = 2;
         N = horizon;
 
-        gamma = 0.5;               // CBF约束系数
+        state_prev = VectorXd::Zero(n * (N + 1));
+        // std::cout << "Size of state_prev: " << state_prev.size() << std::endl;
+        for (int i = 0; i < N + 1; ++i)
+            state_prev.segment(i * n, n) = x0;
+        input_prev = VectorXd::Zero(m * N);
+
+        gamma = 0.3;               // CBF约束系数
         x_obs = VectorXd::Zero(2); // 障碍物的位置（单个）
-        x_obs << 0.0, 2.5;         // 障碍物的位置（单个）
+        x_obs << 1.5, 0.5;         // 障碍物的位置（单个）
         r_obs = 0.5;
 
         dt = dt_;
         setupQP();
+
         flag_init_completed = true;
         std::cout << "MPCController init completed." << std::endl;
     }
@@ -55,6 +62,7 @@ namespace OsqpMPC
         castMPCToQPGradient(x_ref); // 假设x_ref为0
 
         castMPCToQPConstraintMatrix();
+
         castMPCToQPConstraintVectors(x0);
 
         // 初始化OSQP求解器
@@ -82,6 +90,7 @@ namespace OsqpMPC
     }
     void MPCController::update_info(const Odometry &odom, int ct)
     {
+        // std::cout << "State_prev = " << state_prev.transpose() << std::endl;
         update_x0(odom);        // 初始状态
         update_desire_traj(ct); // 期望轨迹
 
@@ -101,14 +110,20 @@ namespace OsqpMPC
     {
         // 构造当前时刻的期望轨迹区间（N个）
         desire_traj_inter_.clear();
+
+        // 1. 期望轨迹是一段轨迹
         int start_index = std::min(ct, static_cast<int>(desire_traj_.poses.size()) - 1);
-        int end_index = std::min(ct + N, static_cast<int>(desire_traj_.poses.size()));
-        // std::cout << "期望轨迹区间: " << start_index << " - " << end_index << std::endl;
-        desire_traj_inter_ =
-            std::vector<PoseStamped>(desire_traj_.poses.begin() + start_index,
-                                     desire_traj_.poses.begin() + end_index);
+        // int end_index = std::min(ct + N, static_cast<int>(desire_traj_.poses.size()));
+        // // std::cout << "期望轨迹区间: " << start_index << " - " << end_index << std::endl;
+        // desire_traj_inter_ =
+        //     std::vector<PoseStamped>(desire_traj_.poses.begin() + start_index,
+        //                              desire_traj_.poses.begin() + end_index);
+        // desire_traj_inter_.resize(N, desire_traj_.poses.back());
+
+        // 只有一个点
+        desire_traj_inter_.push_back(desire_traj_.poses[start_index]);
+        desire_traj_inter_.resize(N, desire_traj_inter_.back());
         // std::cout << "期望轨迹长度: " << desire_traj_inter_.size() << std::endl;
-        desire_traj_inter_.resize(N, desire_traj_.poses.back());
 
         // N = desire_traj_inter_.size();
         // std::cout << "期望轨迹：" << std::endl;
@@ -259,6 +274,9 @@ namespace OsqpMPC
         }
         // std::cerr << "HERE in [solveQP]." << std::endl;
         ctr = QPSolution.segment(n * (N + 1), m);
+
+        state_prev = QPSolution.segment(0, n * (N + 1));
+        input_prev = QPSolution.segment(n * (N + 1), m * N);
         // std::cout << "u: " << ctr(0) << " " << ctr(1) << std::endl;
         return true;
     }
@@ -282,17 +300,17 @@ namespace OsqpMPC
         // 状态约束 (位置和速度限制)
         x_min << -OsqpEigen::INFTY, // x下限
             -OsqpEigen::INFTY,      // y下限
-            -2.0,                   // vx下限 (m/s)
-            -2.0;                   // vy下限 (m/s)
+            -10.0,                   // vx下限 (m/s)
+            -10.0;                   // vy下限 (m/s)
 
         x_max << OsqpEigen::INFTY, // x上限
             OsqpEigen::INFTY,      // y上限
-            2.0,                   // vx上限 (m/s)
-            2.0;                   // vy上限 (m/s)
+            10.0,                   // vx上限 (m/s)
+            10.0;                   // vy上限 (m/s)
 
         // 控制输入约束 (加速度限制)
-        u_min << -1.5, -1.5; // ax, ay下限 (m/s^2)
-        u_max << 1.5, 1.5;   // ax, ay上限 (m/s^2)
+        u_min << -5.0, -5.0; // ax, ay下限 (m/s^2)
+        u_max << 5.0, 5.0;   // ax, ay上限 (m/s^2)
     }
     void MPCController::setWeightMatrices()
     {
@@ -391,7 +409,11 @@ namespace OsqpMPC
         int cbfRowStart = 2 * n * (N + 1) + m * N;
         for (int i = 0; i < N; ++i)
         {
-            VectorXd grad = 2 * (x0.segment(0, 2) - x_obs);
+            // std::cout << state_prev.size() << std::endl;
+            // VectorXd cur_x = state_prev.segment((i + 1) * n, n);
+            VectorXd cur_x = x0;
+
+            VectorXd grad = 2 * (cur_x.segment(0, 2) - x_obs);
             VectorXd nabla_h(n);
             nabla_h << grad, 0, 0;
             // 状态部分列偏移
@@ -440,7 +462,9 @@ namespace OsqpMPC
         VectorXd upperCBF = VectorXd::Zero(N);
         for (int i = 0; i < N; ++i)
         {
-            double h_xk = pow(x0(0) - x_obs(0), 2) + pow(x0(1) - x_obs(1), 2) - pow(r_obs, 2);
+            // VectorXd cur_x = state_prev.segment((i + 1) * n, n);
+            VectorXd cur_x = x0;
+            double h_xk = pow(cur_x(0) - x_obs(0), 2) + pow(cur_x(1) - x_obs(1), 2) - pow(r_obs, 2);
             lowerCBF(i) = -gamma * h_xk;
             upperCBF(i) = OsqpEigen::INFTY;
         }
@@ -461,7 +485,9 @@ namespace OsqpMPC
         int cbfRowStart = 2 * n * (N + 1) + m * N;
         for (int i = 0; i < N; ++i)
         {
-            double h_xk = pow(x0(0) - x_obs(0), 2) + pow(x0(1) - x_obs(1), 2) - pow(r_obs, 2);
+            // VectorXd cur_x = state_prev.segment((i + 1) * n, n);
+            VectorXd cur_x = x0;
+            double h_xk = pow(cur_x(0) - x_obs(0), 2) + pow(cur_x(1) - x_obs(1), 2) - pow(r_obs, 2);
             // std::cout << "h_xk = " << h_xk << std::endl;
             lowerBound(cbfRowStart + i) = -gamma * h_xk;
             upperBound(cbfRowStart + i) = OsqpEigen::INFTY;

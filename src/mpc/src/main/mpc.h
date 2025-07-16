@@ -57,6 +57,12 @@ namespace OsqpMPC
         rclcpp::TimerBase::SharedPtr desire_trajectory_timer_;
         void desire_trajectory_callback();
 
+        Path solved_trajectory_;
+        rclcpp::Publisher<Path>::SharedPtr solved_trajectory_puber_;
+        rclcpp::TimerBase::SharedPtr solved_trajectory_timer_;
+        void solved_trajectory_callback();
+
+
         // 控制器
         double timestamp_, timestamp_last_, dt_; // 时间戳
         int N, ct_;                              // 控制时间步数
@@ -71,7 +77,8 @@ namespace OsqpMPC
         // double fov_;
         // rclcpp::Publisher<PoseStamped>::SharedPtr quadpose_puber;
         // rclcpp::Publisher<PoseStamped>::SharedPtr goal_pose_puber_;
-        // rclcpp::Publisher<PoseArray>::SharedPtr obstacles_puber_;
+        PoseArray obstacles_msg;
+        rclcpp::Publisher<PoseArray>::SharedPtr obstacles_puber_;
         // rclcpp::TimerBase::SharedPtr env_info_timer_;
         // void env_info_callback();
 

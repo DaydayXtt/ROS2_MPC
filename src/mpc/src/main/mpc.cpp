@@ -22,6 +22,7 @@ namespace OsqpMPC
         desire_trajectory_timer_ = create_wall_timer(
             std::chrono::milliseconds(static_cast<int>(1000.0 / publish_rate)),
             std::bind(&MPC_Node::desire_trajectory_callback, this));
+        solved_trajectory_puber_ = create_publisher<Path>("solved_trajectory", 10);
 
         // odom
         flag_init_completed_ = false;
@@ -32,7 +33,7 @@ namespace OsqpMPC
         // MPC轨迹跟踪控制
         params_config_->read_mpc_config(); // 初始化参数
         N = params_config_->mpc().horizon_;
-        RCLCPP_INFO(this->get_logger(), "MPC horizon: %d", N);
+        // RCLCPP_INFO(this->get_logger(), "MPC horizon: %d", N);
         dt_ = params_config_->mpc().dt_;
         ct_ = 0;
 
@@ -55,7 +56,7 @@ namespace OsqpMPC
 
         // quadpose_puber = this->create_publisher<PoseStamped>("/quad_pose", 10);
 
-        // obstacles_puber_ = this->create_publisher<PoseArray>("/obstacles", 10);
+        obstacles_puber_ = this->create_publisher<PoseArray>("obstacles", 10);
         // goal_pose_puber_ = this->create_publisher<PoseStamped>("/goal_pose", 10);
 
         // env_info_timer_ = this->create_wall_timer(
@@ -108,8 +109,8 @@ namespace OsqpMPC
         timestamp_last_ = timestamp_;
 
         // 更新MPC的信息
-        RCLCPP_INFO(this->get_logger(), "Current Pose: %f, %f",
-                    mpc_controller_.get_x0()(0), mpc_controller_.get_x0()(1));
+        // RCLCPP_INFO(this->get_logger(), "Current Pose: %f, %f",
+        //             mpc_controller_.get_x0()(0), mpc_controller_.get_x0()(1));
         mpc_controller_.update_info(quad_odom_, ct_);
 
         // ROS2话题消息更新
@@ -124,6 +125,22 @@ namespace OsqpMPC
             pose.pose = mpc_controller_.desire_traj_inter_[i].pose;
             desire_trajectory_current_.poses.push_back(pose);
         }
+
+        // 解出来的N个状态轨迹
+        solved_trajectory_.header.stamp = this->now();
+        solved_trajectory_.header.frame_id = "map";
+        solved_trajectory_.poses.clear();
+        for (int i = 0; i < mpc_controller_.get_state_prev().size() / (N + 1); i++)
+        {
+            PoseStamped pose;
+            pose.header.stamp = this->now();
+            pose.header.frame_id = "map";
+            
+            pose.pose.position.x = mpc_controller_.get_state_prev()(i * 4 + 0);
+            pose.pose.position.y = mpc_controller_.get_state_prev()(i * 4 + 1);
+            solved_trajectory_.poses.push_back(pose);
+        }
+
 
         // 求解控制量（ax、ay）
         mpc_controller_.solveQP(ct_);
@@ -219,6 +236,18 @@ namespace OsqpMPC
         desire_trajectory_puber_->publish(desire_trajectory_);
         if (desire_trajectory_current_.header.frame_id == "map")
             desire_trajectory_current_puber_->publish(desire_trajectory_current_);
+        if (solved_trajectory_.header.frame_id == "map")
+            solved_trajectory_puber_->publish(solved_trajectory_);
+        
+        // 障碍物
+        obstacles_msg.header.stamp = now();
+        obstacles_msg.header.frame_id = "map";
+        obstacles_msg.poses.clear();
+        Pose ps;
+        ps.position.x = 1.5;
+        ps.position.y = 0.5;
+        obstacles_msg.poses.push_back(ps);
+        obstacles_puber_->publish(obstacles_msg);
     }
 
     void MPC_Node::generateCircleTrajectory(PoseStamped &pose, int index)

@@ -35,6 +35,7 @@ namespace OsqpMPC
         void update_CBF_constraints();
         
         inline Vector4d get_x0() { return x0; }
+        inline VectorXd get_state_prev() { return state_prev; }
     private:
         int n; // 状态维度
         int m; // 控制维度
@@ -45,6 +46,7 @@ namespace OsqpMPC
         double r_obs;   // 障碍物的半径（单个）
 
         Vector4d x_ref, x0;
+        VectorXd state_prev, input_prev;
 
         Path desire_traj_; // 总期望轨迹
 
