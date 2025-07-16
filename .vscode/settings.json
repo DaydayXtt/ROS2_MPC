@@ -95,7 +95,8 @@
         "*.expression": "cpp",
         "sparse": "cpp",
         "*.tpp": "cpp",
-        "nonlinearoptimization": "cpp"
+        "nonlinearoptimization": "cpp",
+        "*.tcc": "cpp"
     },
     "python.defaultInterpreterPath": "/usr/bin/python3",
     "python.linting.pylintEnabled": true,

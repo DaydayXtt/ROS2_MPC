@@ -1,3 +1,14 @@
+/*
+TODO:
+1. 添加 CBF Affine 约束
+    int cbfRowStart = 2*n*(N+1) + m*N;
+    约束矩阵 A_c 再加 N 行 (x_1, x_2, ..., x_N)
+    约束矩阵 A_c 的状态列 (n*i)：\nabla h(x_k)^\mathsf{T}(A−I)
+    约束矩阵 A_c 的输入列 (n*(N+1) + m*i)：\nabla h(x_k)^\mathsf{T}B
+    l：-\gamma * h(x_k)
+    u：OsqpEigen::INFTY
+2. 将矩阵构造部分使用 k 循环赋值的替换为eigen矩阵整体赋值
+*/
 #include "mpc_controller.h"
 using namespace Eigen;
 
