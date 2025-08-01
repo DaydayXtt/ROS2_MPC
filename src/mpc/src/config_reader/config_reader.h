@@ -20,9 +20,12 @@ namespace OsqpMPC
 
     struct MPCStruct // MPC
     {
-        int horizon_ = 0; // 滑动窗口长度
-        double dt_ = 0.0; // 时间步长
-        double gamma_ = 0.0; // CBF约束系数
+        int state_dim_ = 4; // 状态维度
+        int input_dim_ = 2; // 控制输入维度
+        int horizon_ = 20; // 滑动窗口长度
+        double dt_ = 0.05; // 时间步长
+        double gamma_ = 0.7; // CBF约束系数
+        double rho_ = 100; // slack项惩罚系数
     };
 
     struct TrajectoryStruct // 期望轨迹

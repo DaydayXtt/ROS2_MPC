@@ -6,11 +6,13 @@ namespace OsqpMPC
     {
         // 设置输出精度
         std::cout << std::fixed << std::setprecision(6);
+
         ns = this->get_namespace();
         std::string robot_name = ns.substr(1, ns.length() - 1);
         RCLCPP_INFO(this->get_logger(), "I am %s", robot_name.c_str());
 
         params_config_ = std::make_unique<ConfigReader>();
+
         // 生成期望轨迹
         params_config_->read_trajectory_config(); // 初始化参数
         desire_trajectory_ = generate_trajectory();
@@ -32,12 +34,14 @@ namespace OsqpMPC
 
         // MPC轨迹跟踪控制
         params_config_->read_mpc_config(); // 初始化参数
+        state_dim_ = params_config_->mpc().state_dim_;
+        input_dim_ = params_config_->mpc().input_dim_;
         N = params_config_->mpc().horizon_;
         // RCLCPP_INFO(this->get_logger(), "MPC horizon: %d", N);
         dt_ = params_config_->mpc().dt_;
-        ct_ = 0;
-
         gamma_ = params_config_->mpc().gamma_;
+        rho_ = params_config_->mpc().rho_;
+        ct_ = 0;
 
         motion_planning_timer_ = this->create_wall_timer(
             std::chrono::milliseconds(static_cast<int>(dt_ * 1000.0)),
@@ -99,8 +103,9 @@ namespace OsqpMPC
             RCLCPP_WARN(this->get_logger(), "Odometry not received yet.");
             return;
         }
-        mpc_controller_.init(N, quad_odom_, desire_trajectory_, dt_, flag_init_completed_);
-        // RCLCPP_INFO(this->get_logger(), "HERE!");
+        mpc_controller_.init(state_dim_, input_dim_, N,
+                             quad_odom_, desire_trajectory_, dt_,
+                             gamma_, rho_, flag_init_completed_);
         // 计时
         auto tic = std::chrono::high_resolution_clock::now();
         timestamp_ = this->now().nanoseconds();
@@ -126,25 +131,25 @@ namespace OsqpMPC
             desire_trajectory_current_.poses.push_back(pose);
         }
 
+        // 求解控制量（ax、ay）
+        mpc_controller_.solveQP(ct_);
+
         // 解出来的N个状态轨迹
         solved_trajectory_.header.stamp = this->now();
         solved_trajectory_.header.frame_id = "map";
         solved_trajectory_.poses.clear();
-        for (int i = 0; i < mpc_controller_.get_state_prev().size() / (N + 1); i++)
+        for (int i = 0; i < mpc_controller_.get_state_prev().size() / state_dim_; i++)
         {
             PoseStamped pose;
             pose.header.stamp = this->now();
             pose.header.frame_id = "map";
-            
-            pose.pose.position.x = mpc_controller_.get_state_prev()(i * 4 + 0);
-            pose.pose.position.y = mpc_controller_.get_state_prev()(i * 4 + 1);
+
+            pose.pose.position.x = mpc_controller_.get_state_prev()(i * state_dim_ + 0);
+            pose.pose.position.y = mpc_controller_.get_state_prev()(i * state_dim_ + 1);
             solved_trajectory_.poses.push_back(pose);
         }
-
-
-        // 求解控制量（ax、ay）
-        mpc_controller_.solveQP(ct_);
-
+        // RCLCPP_INFO(this->get_logger(), "size of solved trajectory: %ld", solved_trajectory_.poses.size());
+        
         // 发布至odom
         Accel accel_msg;
         accel_msg.linear.x = mpc_controller_.ctr.x();
@@ -238,14 +243,14 @@ namespace OsqpMPC
             desire_trajectory_current_puber_->publish(desire_trajectory_current_);
         if (solved_trajectory_.header.frame_id == "map")
             solved_trajectory_puber_->publish(solved_trajectory_);
-        
+
         // 障碍物
         obstacles_msg.header.stamp = now();
         obstacles_msg.header.frame_id = "map";
         obstacles_msg.poses.clear();
         Pose ps;
         ps.position.x = 1.5;
-        ps.position.y = 0.5;
+        ps.position.y = 1.0;
         obstacles_msg.poses.push_back(ps);
         obstacles_puber_->publish(obstacles_msg);
     }

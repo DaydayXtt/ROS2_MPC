@@ -36,15 +36,13 @@
     ros2 run odoms odom_integrator --ros-args --remap __ns:=/robot0
     ros2 run mpc main_node --ros-args --remap __ns:=/robot0
     ```
-- 没有“提前”的丝滑感觉，哪怕gamma取小
-    - 取0有明显变化
-    - 需要理解一下CBF约束的含义
+- Debug:
+  1. ```gamma```取值很小时才合理，$\gamma > 0.1$时求解器会失败
+    - 加入松弛变量可以解决求解失败的问题，但gamma取大值是求解效果依旧不好。
 ### TODO:
-1. x、y、z三维
-2. 尝试CBF（基本完成，下一步：）
-    - 写好参数yaml
-    - 整理代码
-3. 写分配导航的专利！
+1. 完成障碍物生成部分的代码
+2. x、y、z三维
+
    
 ## 2. ```odoms```功能包
 - 功能：Python建立积分器模型

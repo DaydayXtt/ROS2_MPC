@@ -45,6 +45,9 @@ Trajectory: # 轨迹
     line_start_z: 0.1 # 直线起点y坐标
     line_speed: 0.005
 MPC: # 控制器
-    horizon: 30 # 滑动窗口长度
+    state_dim: 4 # 状态维度
+    input_dim: 2 # 输入维度
+    horizon: 20 # 滑动窗口长度
     dt: 0.05 # 时间步长
-    gamma: 0.8 # CBF约束系数
+    gamma: 0.1 # CBF约束系数
+    rho: 100000000.0 # slack项系数

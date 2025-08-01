@@ -18,15 +18,21 @@ namespace OsqpMPC
     {
     }
 
-    void MPCController::init(int horizon, const Odometry &odom, const Path &desire_traj, double dt_, bool &flag_init_completed)
+    void MPCController::init(int state_dim, int input_dim, int horizon,
+                             const Odometry &odom, const Path &desire_traj, double dt_,
+                             double cbf_gamma, double slack_rho, bool &flag_init_completed)
     {
         if (flag_init_completed)
             return;
+
+        x0 = VectorXd::Zero(state_dim);
+        x_ref = VectorXd::Zero(state_dim);
+
         update_x0(odom);             // 初始状态
         x_ref << 0.5, 5.0, 0.0, 0.0; // 参考状态
         desire_traj_ = desire_traj;
-        n = 4;
-        m = 2;
+        n = state_dim;
+        m = input_dim;
         N = horizon;
 
         state_prev = VectorXd::Zero(n * (N + 1));
@@ -35,9 +41,11 @@ namespace OsqpMPC
             state_prev.segment(i * n, n) = x0;
         input_prev = VectorXd::Zero(m * N);
 
-        gamma = 0.3;               // CBF约束系数
+        gamma = cbf_gamma; // CBF约束系数
+        rho_ = slack_rho;  // slack惩罚系数
+        // std::cout << "CBF gamma: " << gamma << std::endl;
         x_obs = VectorXd::Zero(2); // 障碍物的位置（单个）
-        x_obs << 1.5, 0.5;         // 障碍物的位置（单个）
+        x_obs << 1.5, 1.0;         // 障碍物的位置（单个）
         r_obs = 0.5;
 
         dt = dt_;
@@ -70,8 +78,8 @@ namespace OsqpMPC
         solver.settings()->setWarmStart(true);
         // solver.settings()->setPolish(true);
 
-        solver.data()->setNumberOfVariables(n * (N + 1) + m * N);
-        solver.data()->setNumberOfConstraints(2 * n * (N + 1) + m * N + N);
+        solver.data()->setNumberOfVariables(n * (N + 1) + m * N + N);
+        solver.data()->setNumberOfConstraints(2 * n * (N + 1) + m * N + N + 1);
 
         if (!solver.data()->setHessianMatrix(hessianMatrix))
             return;
@@ -94,8 +102,8 @@ namespace OsqpMPC
         update_x0(odom);        // 初始状态
         update_desire_traj(ct); // 期望轨迹
 
-        // update_CBF_constraints(); // CBF约束
         castMPCToQPConstraintMatrix();
+        updateConstraintVectors(x0);
     }
 
     void MPCController::update_x0(const Odometry &odom)
@@ -103,7 +111,6 @@ namespace OsqpMPC
         auto pos = odom.pose.pose.position;
         auto vel = odom.twist.twist.linear;
         x0 << pos.x, pos.y, vel.x, vel.y; // 初始状态
-        updateConstraintVectors(x0);
     }
 
     void MPCController::update_desire_traj(int ct) // 更新期望轨迹(N个时刻)
@@ -140,11 +147,11 @@ namespace OsqpMPC
         // 先构造向量形式的xRef
         DiagonalMatrix<double, Dynamic> Q_expanded(n * (N + 1));
         // 将 Q 的对角元素沿对角线扩展 2 倍
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < n; ++i)
             for (int j = 0; j < N; ++j)
-                Q_expanded.diagonal()[i + j * 4] = Q.diagonal()[i];
-        for (int i = 0; i < 4; ++i)
-            Q_expanded.diagonal()[i + N * 4] = Qf.diagonal()[i];
+                Q_expanded.diagonal()[i + j * n] = Q.diagonal()[i];
+        for (int i = 0; i < n; ++i)
+            Q_expanded.diagonal()[i + N * n] = Qf.diagonal()[i];
 
         VectorXd xRef_expanded = VectorXd::Zero(n * (N + 1));
         for (int i = 0; i < N; ++i)
@@ -155,25 +162,25 @@ namespace OsqpMPC
             double vx = 0.0;
             double vy = 0.0;
             // 处理参考速度
-            if (i == 0) // 初
-            {
-                vx = (desire_traj_inter_[1].pose.position.x - px) / dt;
-                vy = (desire_traj_inter_[1].pose.position.y - py) / dt;
-            }
-            else if (i == N - 1) // 末
-            {
-                vx = (px - desire_traj_inter_[N - 2].pose.position.x) / dt;
-                vy = (py - desire_traj_inter_[N - 2].pose.position.y) / dt;
-            }
-            else // 中间
-            {
-                vx = (desire_traj_inter_[i + 1].pose.position.x -
-                      desire_traj_inter_[i - 1].pose.position.x) /
-                     (2 * dt);
-                vy = (desire_traj_inter_[i + 1].pose.position.y -
-                      desire_traj_inter_[i - 1].pose.position.y) /
-                     (2 * dt);
-            }
+            // if (i == 0) // 初
+            // {
+            //     vx = (desire_traj_inter_[1].pose.position.x - px) / dt;
+            //     vy = (desire_traj_inter_[1].pose.position.y - py) / dt;
+            // }
+            // else if (i == N - 1) // 末
+            // {
+            //     vx = (px - desire_traj_inter_[N - 2].pose.position.x) / dt;
+            //     vy = (py - desire_traj_inter_[N - 2].pose.position.y) / dt;
+            // }
+            // else // 中间
+            // {
+            //     vx = (desire_traj_inter_[i + 1].pose.position.x -
+            //           desire_traj_inter_[i - 1].pose.position.x) /
+            //          (2 * dt);
+            //     vy = (desire_traj_inter_[i + 1].pose.position.y -
+            //           desire_traj_inter_[i - 1].pose.position.y) /
+            //          (2 * dt);
+            // }
             xRef_expanded.segment(i * n, n) << px, py, vx, vy;
         }
         // 终端
@@ -185,7 +192,7 @@ namespace OsqpMPC
         // Vector4d Qx_ref = Q * (-x_ref);
         auto Qx_ref_expanded = Q_expanded * (-xRef_expanded);
         // std::cout << "Qx_ref_expanded: " << Qx_ref_expanded.size() << std::endl;
-        gradient = VectorXd::Zero(n * (N + 1) + m * N);
+        gradient = VectorXd::Zero(n * (N + 1) + m * N + N);
         gradient.segment(0, n * (N + 1)) = Qx_ref_expanded;
 
         // 填充梯度向量 (仅状态部分)
@@ -194,34 +201,6 @@ namespace OsqpMPC
         //     int posQ = i % n;
         //     gradient(i) = Qx_ref(posQ);
         // }
-    }
-
-    void MPCController::update_CBF_constraints()
-    {
-        // CBF
-        int cbfRowStart = 2 * n * (N + 1) + m * N;
-        VectorXd x0_backup(n);
-        x0_backup << 1, 0, 0, 0;
-        for (int i = 0; i < N; ++i)
-        {
-            VectorXd grad = 2 * (x0_backup.segment(0, 2) - x_obs);
-            VectorXd nabla_h(n);
-            nabla_h << grad, 0, 0;
-            std::cout << "nabla_h: " << nabla_h.transpose() << std::endl;
-            // 状态部分列偏移
-            VectorXd gradA_I = nabla_h.transpose() * (A_system - MatrixXd::Identity(n, n)); // size n
-            std::cout << "gradA_I: " << gradA_I.transpose() << std::endl;
-            int x_col0 = n * i;
-            for (int k = 0; k < n; ++k)
-                constraintMatrix.insert(cbfRowStart + i, x_col0 + k) = gradA_I(k);
-            // 控制部分列偏移
-            VectorXd gradB = nabla_h.transpose() * B_system; // size m
-            std::cout << "gradB: " << gradB.transpose() << std::endl;
-            int u_col0 = n * (N + 1) + m * i;
-            for (int k = 0; k < m; ++k)
-                constraintMatrix.insert(cbfRowStart + i, u_col0 + k) = gradB(k);
-        }
-        constraintMatrix.makeCompressed();
     }
 
     bool MPCController::solveQP(int ct)
@@ -284,12 +263,14 @@ namespace OsqpMPC
     void MPCController::setDynamicsMatrices()
     {
         // 状态矩阵
+        A_system = MatrixXd::Zero(n, n);
         A_system << 1.0, 0.0, dt, 0.0,
             0.0, 1.0, 0.0, dt,
             0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0;
 
         // 控制矩阵 (加速度输入)
+        B_system = MatrixXd::Zero(n, m);
         B_system << 0.5 * dt * dt, 0.0,
             0.0, 0.5 * dt * dt,
             dt, 0.0,
@@ -298,33 +279,42 @@ namespace OsqpMPC
     void MPCController::setInequalityConstraints()
     {
         // 状态约束 (位置和速度限制)
+        x_min = VectorXd::Zero(n);
         x_min << -OsqpEigen::INFTY, // x下限
             -OsqpEigen::INFTY,      // y下限
-            -10.0,                   // vx下限 (m/s)
-            -10.0;                   // vy下限 (m/s)
+            -2.0,                   // vx下限 (m/s)
+            -2.0;                   // vy下限 (m/s)
 
+        x_max = VectorXd::Zero(n);
         x_max << OsqpEigen::INFTY, // x上限
             OsqpEigen::INFTY,      // y上限
-            10.0,                   // vx上限 (m/s)
-            10.0;                   // vy上限 (m/s)
+            2.0,                   // vx上限 (m/s)
+            2.0;                   // vy上限 (m/s)
 
         // 控制输入约束 (加速度限制)
-        u_min << -5.0, -5.0; // ax, ay下限 (m/s^2)
-        u_max << 5.0, 5.0;   // ax, ay上限 (m/s^2)
+        u_min = VectorXd::Zero(m);
+        u_min << -1.5, -1.5; // ax, ay下限 (m/s^2)
+
+        u_max = VectorXd::Zero(m);
+        u_max << 1.5, 1.5; // ax, ay上限 (m/s^2)
     }
     void MPCController::setWeightMatrices()
     {
         // 状态权重 (位置误差权重更高)
+        Q = MatrixXd::Zero(n, n);
         Q.diagonal() << 10.0, // x权重
             10.0,             // y权重
-            1.0,              // vx权重
-            1.0;              // vy权重
+            0.0,              // vy权重
+            0.0;
+        // vx权重
 
         // 控制输入权重
+        R = MatrixXd::Zero(m, m);
         R.diagonal() << 0.1, // ax权重
             0.1;             // ay权重
 
         // 终端权重 (这里和Q一样)
+        Qf = MatrixXd::Zero(n, n);
         Qf.diagonal() << 10.0, // x权重
             10.0,              // y权重
             1.0,               // vx权重
@@ -332,8 +322,8 @@ namespace OsqpMPC
     }
     void MPCController::castMPCToQPHessian()
     {
-        hessianMatrix.resize(n * (N + 1) + m * N,
-                             n * (N + 1) + m * N);
+        hessianMatrix.resize(n * (N + 1) + m * N + N,
+                             n * (N + 1) + m * N + N);
         // 填充Hessian矩阵 (Q和R的对角元素)
         for (int i = 0; i < n * N; i++)
         {
@@ -356,12 +346,21 @@ namespace OsqpMPC
             if (value != 0)
                 hessianMatrix.insert(i + n * (N + 1), i + n * (N + 1)) = value;
         }
+
+        // slack
+        // std::cout << "rho: " << rho_ << std::endl;
+        int slackStart = n * (N + 1) + m * N;
+        for (int i = 0; i < N; ++i)
+        {
+            hessianMatrix.insert(slackStart + i, slackStart + i) = rho_;
+        }
+
         hessianMatrix.makeCompressed();
     }
-    void MPCController::castMPCToQPGradient(const Matrix<double, 4, 1> &xRef)
+    void MPCController::castMPCToQPGradient(const MatrixXd &xRef)
     {
-        Matrix<double, 4, 1> Qx_ref = Q * (-xRef);
-        gradient = VectorXd::Zero(n * (N + 1) + m * N);
+        MatrixXd Qx_ref = Q * (-xRef);
+        gradient = VectorXd::Zero(n * (N + 1) + m * N + N);
 
         // 填充梯度向量 (仅状态部分)
         for (int i = 0; i < n * (N + 1); i++)
@@ -374,9 +373,9 @@ namespace OsqpMPC
     {
         // constraintMatrix.resize(n * (N + 1) + n * (N + 1) + m * N,
         //                         n * (N + 1) + m * N);
-        // 加上CBF约束
-        constraintMatrix.resize(n * (N + 1) + n * (N + 1) + m * N + N,
-                                n * (N + 1) + m * N);
+        // 加上CBF约束、slack
+        constraintMatrix.resize(n * (N + 1) + n * (N + 1) + m * N + N + 1,
+                                n * (N + 1) + m * N + N);
 
         // 初始状态约束
         for (int i = 0; i < n * (N + 1); i++)
@@ -406,16 +405,18 @@ namespace OsqpMPC
 
         // CBF
         // std::cout << "Init: x0 = " << x0.segment(0, 2).transpose() << std::endl;
+        int slackCol0 = n * (N + 1) + m * N;
         int cbfRowStart = 2 * n * (N + 1) + m * N;
+        // VectorXd cur_x = x0;
         for (int i = 0; i < N; ++i)
         {
             // std::cout << state_prev.size() << std::endl;
-            // VectorXd cur_x = state_prev.segment((i + 1) * n, n);
-            VectorXd cur_x = x0;
-
-            VectorXd grad = 2 * (cur_x.segment(0, 2) - x_obs);
+            VectorXd cur_x = state_prev.segment(i * n, n);
+            double nabla_0 = 2 * (cur_x(0) - x_obs(0));
+            double nabla_1 = 2 * (cur_x(1) - x_obs(1));
             VectorXd nabla_h(n);
-            nabla_h << grad, 0, 0;
+            nabla_h << nabla_0, nabla_1, 0, 0;
+            // std::cout << "nabla_h: " << nabla_h.transpose() << std::endl;
             // 状态部分列偏移
             VectorXd gradA_I = nabla_h.transpose() * (A_system - MatrixXd::Identity(n, n)); // size n
             int x_col0 = n * i;
@@ -427,11 +428,26 @@ namespace OsqpMPC
             int u_col0 = n * (N + 1) + m * i;
             for (int k = 0; k < m; ++k)
                 constraintMatrix.insert(cbfRowStart + i, u_col0 + k) = gradB(k);
+
+            // slack
+            constraintMatrix.insert(cbfRowStart + i, slackCol0 + i) = 1.0;
+
+            // 用上一轮求解的输入序列更新当前状态
+            // cur_x = cur_x +
+            //         dt * (A_system * cur_x.segment(0, n) +
+            //               B_system * input_prev.segment(i * m, m));
         }
+        // 终端安全约束
+        int terminalRow = cbfRowStart + N;
+        int xN_col0 = n * N; // x_N 列起始位置
+        VectorXd cur_xN = state_prev.segment(N * n, n);
+        for (int k = 0; k < n; ++k)
+            constraintMatrix.insert(terminalRow,
+                                    xN_col0 + k) = 2 * ((k < 2 ? cur_xN(k) - x_obs(k) : 0));
 
         constraintMatrix.makeCompressed();
     }
-    void MPCController::castMPCToQPConstraintVectors(const Matrix<double, 4, 1> &x0)
+    void MPCController::castMPCToQPConstraintVectors(const MatrixXd &x0)
     {
         // 不等式约束向量
         VectorXd lowerInequality = VectorXd::Zero(n * (N + 1) + m * N);
@@ -458,24 +474,37 @@ namespace OsqpMPC
         upperEquality.segment(0, n) = -x0;
 
         // CBF约束
-        VectorXd lowerCBF = VectorXd::Zero(N);
-        VectorXd upperCBF = VectorXd::Zero(N);
+        VectorXd lowerCBF = VectorXd::Zero(N + 1);
+        VectorXd upperCBF = VectorXd::Zero(N + 1);
+
+        // VectorXd cur_x = x0;
         for (int i = 0; i < N; ++i)
         {
-            // VectorXd cur_x = state_prev.segment((i + 1) * n, n);
-            VectorXd cur_x = x0;
+            VectorXd cur_x = state_prev.segment(i * n, n);
             double h_xk = pow(cur_x(0) - x_obs(0), 2) + pow(cur_x(1) - x_obs(1), 2) - pow(r_obs, 2);
+            // std::cout << "h_xk = " << h_xk << std::endl;
             lowerCBF(i) = -gamma * h_xk;
             upperCBF(i) = OsqpEigen::INFTY;
+
+            // 用上一轮求解的输入序列更新当前状态
+            // cur_x = cur_x +
+            //         dt * (A_system * cur_x.segment(0, n) +
+            //               B_system * input_prev.segment(i * m, m));
         }
 
+        // 终端约束
+        // lowerCBF(N) = 0.0;
+        lowerCBF(N) = -OsqpEigen::INFTY;
+        upperCBF(N) = OsqpEigen::INFTY;
+
+
         // 合并约束
-        lowerBound.resize(2 * n * (N + 1) + m * N + N);
-        upperBound.resize(2 * n * (N + 1) + m * N + N);
+        lowerBound.resize(2 * n * (N + 1) + m * N + N + 1);
+        upperBound.resize(2 * n * (N + 1) + m * N + N + 1);
         lowerBound << lowerEquality, lowerInequality, lowerCBF;
         upperBound << upperEquality, upperInequality, upperCBF;
     }
-    void MPCController::updateConstraintVectors(const Matrix<double, 4, 1> &x0)
+    void MPCController::updateConstraintVectors(const MatrixXd &x0)
     {
         lowerBound.segment(0, n) = -x0;
         upperBound.segment(0, n) = -x0;
@@ -483,19 +512,25 @@ namespace OsqpMPC
         // std::cout << gamma << std::endl;
         // std::cout << "obs: " << x_obs.transpose() << std::endl;
         int cbfRowStart = 2 * n * (N + 1) + m * N;
+        // VectorXd cur_x = x0;
+
         for (int i = 0; i < N; ++i)
         {
-            // VectorXd cur_x = state_prev.segment((i + 1) * n, n);
-            VectorXd cur_x = x0;
+            VectorXd cur_x = state_prev.segment(i * n, n);
             double h_xk = pow(cur_x(0) - x_obs(0), 2) + pow(cur_x(1) - x_obs(1), 2) - pow(r_obs, 2);
-            // std::cout << "h_xk = " << h_xk << std::endl;
+            std::cout << "h_xk = " << h_xk << std::endl;
             lowerBound(cbfRowStart + i) = -gamma * h_xk;
             upperBound(cbfRowStart + i) = OsqpEigen::INFTY;
+
+            // 用上一轮求解的输入序列更新当前状态
+            // cur_x = cur_x +
+            //         dt * (A_system * cur_x.segment(0, n) +
+            //               B_system * input_prev.segment(i * m, m));
         }
     }
 
-    double MPCController::getErrorNorm(const Matrix<double, 4, 1> &x,
-                                       const Matrix<double, 4, 1> &xRef)
+    double MPCController::getErrorNorm(const MatrixXd &x,
+                                       const MatrixXd &xRef)
     {
         return (x - xRef).norm();
     }
